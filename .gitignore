@@ -1,0 +1,31 @@
+# Entornos virtuales
+.env
+.venv/
+venv/
+env/
+
+# Cachés de Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# IDE/Editor
+.vscode/
+.idea/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos locales de BD / pruebas
+lookmystyle.db
+*.sqlite
+*.sqlite3
+
+# Logs y herramientas
+*.log
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
