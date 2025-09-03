@@ -9,8 +9,8 @@ from sqlalchemy.exc import IntegrityError
 
 from .database import engine, Base
 from .deps import get_db
-from .models import ClienteORM  # y ProductoORM si lo integras
-from .schemas import ClienteIn, Cliente
+from .models import ProductoORM, ClienteORM 
+from .schemas import ProductoIn, Producto, ClienteIn, Cliente
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,7 +19,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="LookMyStyle API", version="0.3.0", lifespan=lifespan)
 
-# Ajusta orígenes si tienes frontend aparte
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -42,26 +41,24 @@ def build_order(field: str, direction: str):
     col = m.get(field, ClienteORM.id)
     return asc(col) if direction.lower() == "asc" else desc(col)
 
+
 @app.get("/clientes", response_model=List[Cliente], tags=["Clientes"])
 def listar_clientes(
-    db: Session = Depends(get_db),
     q: Optional[str] = Query(None, description="Buscar por nombre o email"),
-    limit: int = Query(50, ge=1, le=200),
-    skip: int = Query(0, ge=0),
-    order_by: str = Query("id", pattern="^(id|nombre|email|telefono)$"),
-    order_dir: str = Query("asc", pattern="^(asc|desc)$"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
 ):
-    stmt = select(ClienteORM)
+    query = db.query(ClienteORM)
     if q:
         term = f"%{q.strip()}%"
-        stmt = stmt.where(or_(ClienteORM.nombre.like(term), ClienteORM.email.like(term)))
-
-    stmt = stmt.order_by(build_order(order_by, order_dir)).offset(skip).limit(limit)
-    return list(db.scalars(stmt).all())
+        # En SQL Server, la collation suele ser case-insensitive
+        query = query.filter(or_(ClienteORM.nombre.like(term), ClienteORM.email.like(term)))
+    return query.order_by(ClienteORM.id).offset(offset).limit(limit).all()
 
 @app.get("/clientes/{cliente_id}", response_model=Cliente, tags=["Clientes"])
 def obtener_cliente(
-    cliente_id: int = Path(..., gt=0),
+    cliente_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
 ):
     cli = db.get(ClienteORM, cliente_id)
@@ -70,42 +67,54 @@ def obtener_cliente(
     return cli
 
 @app.post("/clientes", response_model=Cliente, status_code=status.HTTP_201_CREATED, tags=["Clientes"])
-def crear_cliente(payload: ClienteIn, db: Session = Depends(get_db)):
-    cli = ClienteORM(**payload.model_dump())
+def crear_cliente(cliente_in: ClienteIn, db: Session = Depends(get_db)):
+    # Chequeo optimista: email único
+    if db.query(ClienteORM).filter(ClienteORM.email == cliente_in.email).first():
+        raise HTTPException(status_code=409, detail="Email ya registrado")
+    cli = ClienteORM(**cliente_in.model_dump())
     db.add(cli)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        # email UNIQUE
-        raise HTTPException(status_code=409, detail="El email ya está registrado")
+        raise HTTPException(status_code=409, detail="Email ya registrado")
     db.refresh(cli)
     return cli
 
 @app.put("/clientes/{cliente_id}", response_model=Cliente, tags=["Clientes"])
 def actualizar_cliente(
-    payload: ClienteIn,
-    cliente_id: int = Path(..., gt=0),
+    cliente_id: int = Path(..., gt=0, description="ID (>0)"),
+    cliente_in: ClienteIn = ...,
     db: Session = Depends(get_db),
 ):
     cli = db.get(ClienteORM, cliente_id)
     if not cli:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-    for k, v in payload.model_dump().items():
-        setattr(cli, k, v)
+    # Unicidad de email ignorando el propio registro
+    if db.query(ClienteORM).filter(
+        ClienteORM.email == cliente_in.email,
+        ClienteORM.id != cliente_id
+    ).first():
+        raise HTTPException(status_code=409, detail="Email ya registrado")
+
+    data = cliente_in.model_dump()
+    cli.nombre = data["nombre"]
+    cli.email = data["email"]
+    cli.telefono = data["telefono"]
 
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="El email ya está registrado")
+        raise HTTPException(status_code=409, detail="Email ya registrado")
+
     db.refresh(cli)
     return cli
 
 @app.delete("/clientes/{cliente_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Clientes"])
 def eliminar_cliente(
-    cliente_id: int = Path(..., gt=0),
+    cliente_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
 ):
     cli = db.get(ClienteORM, cliente_id)
