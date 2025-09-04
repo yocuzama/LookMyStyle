@@ -1,31 +1,48 @@
-# Entornos virtuales
+# Entornos y credenciales
 .env
-.venv/
+.env.*
 venv/
+.venv/
 env/
+ENV/
 
-# Cachés de Python
+# Compilados / cachés Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.pytype/
+.ruff_cache/
+.tox/
+.nox/
+.cache/
 
-# IDE/Editor
+# Cobertura / tests
+.coverage
+.coverage.*
+htmlcov/
+*.cover
+*.py,cover
+coverage.xml
+nosetests.xml
+
+# Build / distribución
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# IDE / SO
 .vscode/
 .idea/
-
-# Sistema operativo
 .DS_Store
 Thumbs.db
 
-# Archivos locales de BD / pruebas
-lookmystyle.db
-*.sqlite
-*.sqlite3
-
-# Logs y herramientas
+# Logs
 *.log
-.pytest_cache/
-.mypy_cache/
-.coverage
-coverage.xml
+
+# Bases locales (por si usaste SQLite alguna vez)
+*.sqlite3
+*.db
+lookmystyle.db
