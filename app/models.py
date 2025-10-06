@@ -1,17 +1,31 @@
-# app/models.py
-from typing import Optional
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Integer, Numeric
+"""Modelos ORM actuales de LookMyStyle."""
+
+from typing import Optional, List
+from datetime import datetime
+from sqlalchemy import (
+    String,
+    Integer,
+    Numeric,
+    DateTime,
+    ForeignKey,
+    UniqueConstraint,
+    CheckConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
-from datetime import datetime
-from typing import List  
-from sqlalchemy import DateTime, ForeignKey, UniqueConstraint, CheckConstraint
-from sqlalchemy.orm import relationship
 
-
-# -------- Productos --------
 class ProductoORM(Base):
+    """Producto del catálogo.
+
+    Atributos:
+        id: Identificador interno.
+        nombre: Nombre del producto.
+        categoria: Categoría del producto.
+        precio: Precio unitario.
+        stock: Unidades disponibles en inventario.
+    """
+
     __tablename__ = "productos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -20,29 +34,57 @@ class ProductoORM(Base):
     precio: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     stock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-# -------- Clientes --------
+
 class ClienteORM(Base):
+    """Cliente de la tienda.
+
+    Atributos:
+        id: Identificador interno.
+        nombre: Nombre completo del cliente.
+        email: Correo electrónico único.
+        telefono: Número de contacto opcional.
+        carritos: Carritos asociados al cliente.
+    """
+
     __tablename__ = "clientes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     nombre: Mapped[str] = mapped_column(String(80), nullable=False)
-    email: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(
+        String(120), nullable=False, unique=True, index=True
+    )
     telefono: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    
-    # navegar desde Cliente → Carritos
-    carritos: Mapped[List["CarritoORM"]] = relationship(back_populates="cliente", lazy="selectin")
 
-    
+    carritos: Mapped[List["CarritoORM"]] = relationship(
+        back_populates="cliente", lazy="selectin"
+    )
 
 
-# -------- Carritos --------
 class CarritoORM(Base):
+    """Carrito de compras asociado a un cliente.
+
+    Atributos:
+        id: Identificador interno del carrito.
+        cliente_id: Identificador del cliente dueño del carrito.
+        estado: Estado del carrito; 'abierto' o 'cerrado'.
+        created_at: Fecha de creación (UTC).
+        closed_at: Fecha de cierre si aplica (UTC).
+        items: Ítems contenidos en el carrito.
+        cliente: Cliente propietario del carrito.
+    """
+
     __tablename__ = "carritos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"), nullable=False, index=True)
-    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="abierto", index=True)  # 'abierto' | 'cerrado'
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    cliente_id: Mapped[int] = mapped_column(
+        ForeignKey("clientes.id"), nullable=False, index=True
+    )
+    estado: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="abierto", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     items: Mapped[List["CarritoItemORM"]] = relationship(
@@ -50,19 +92,35 @@ class CarritoORM(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    # navegar desde Cliente → Carritos
     cliente: Mapped["ClienteORM"] = relationship(back_populates="carritos")
 
 
 class CarritoItemORM(Base):
+    """Ítem dentro de un carrito.
+
+    Atributos:
+        id: Identificador interno del ítem.
+        carrito_id: Identificador del carrito al que pertenece.
+        producto_id: Identificador del producto agregado.
+        cantidad: Unidades del producto en el carrito.
+        precio_unitario: Precio tomado como snapshot al agregar, si existe.
+        carrito: Carrito asociado.
+        producto: Producto asociado.
+    """
+
     __tablename__ = "carrito_items"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    carrito_id: Mapped[int] = mapped_column(ForeignKey("carritos.id", ondelete="CASCADE"), nullable=False, index=True)
-    producto_id: Mapped[int] = mapped_column(ForeignKey("productos.id"), nullable=False, index=True)
+    carrito_id: Mapped[int] = mapped_column(
+        ForeignKey("carritos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    producto_id: Mapped[int] = mapped_column(
+        ForeignKey("productos.id"), nullable=False, index=True
+    )
     cantidad: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Snapshot del precio al momento de agregar (si prefieres precio dinámico, puedes dejarlo en NULL)
-    precio_unitario: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    precio_unitario: Mapped[Optional[float]] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
 
     carrito: Mapped["CarritoORM"] = relationship(back_populates="items")
     producto: Mapped["ProductoORM"] = relationship()
