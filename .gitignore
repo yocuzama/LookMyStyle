@@ -1,48 +1,52 @@
-# Entornos y credenciales
+# Archivos de entorno y configuraciones locales
 .env
 .env.*
-venv/
-.venv/
-env/
-ENV/
+!.env.example
 
-# Compilados / cachés Python
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Archivos de dependencias o cachés de Python
 __pycache__/
 *.py[cod]
-*$py.class
-.pytest_cache/
-.mypy_cache/
-.pytype/
-.ruff_cache/
-.tox/
-.nox/
-.cache/
+*.pyo
+*.pyd
+*.pkl
+*.db
+*.sqlite3
 
-# Cobertura / tests
-.coverage
-.coverage.*
-htmlcov/
-*.cover
-*.py,cover
-coverage.xml
-nosetests.xml
-
-# Build / distribución
-dist/
-build/
-*.egg-info/
-.eggs/
-
-# IDE / SO
+# Configuraciones del IDE
 .vscode/
 .idea/
+*.sublime-workspace
+*.sublime-project
+
+# Archivos temporales del sistema
 .DS_Store
 Thumbs.db
+
+# Archivos de build o distribuciones
+build/
+dist/
+*.egg-info/
 
 # Logs
 *.log
 
-# Bases locales (por si usaste SQLite alguna vez)
-*.sqlite3
-*.db
-lookmystyle.db
+# Archivos de prueba o cobertura
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Archivos generados automáticamente por herramientas
+.mypy_cache/
+__pypackages__/
+.pyre/
+
+# Configuración de OS
+*.swp
+*.bak
+*.tmp
+*.orig

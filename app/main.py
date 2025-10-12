@@ -1,19 +1,16 @@
-"""API LookMyStyle: productos, clientes y carrito (sin JWT en este commit).
-
-Incluye:
-- CRUD de productos y clientes.
-- Carrito: crear/recuperar, agregar/actualizar/quitar ítems, ver y checkout.
-- Validaciones con Pydantic y persistencia con SQLAlchemy 2.x.
-"""
-
+import os
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, status
+import jwt
+from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, Security, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .auth import router as auth_router
 from .database import Base, engine
 from .deps import get_db
 from .models import CarritoItemORM, CarritoORM, ClienteORM, ProductoORM
@@ -30,22 +27,45 @@ from .schemas import (
 
 app = FastAPI(title="LookMyStyle API", version="0.3.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+JWT_SECRET = os.getenv("JWT_SECRET", "change_me_in_env")
+JWT_ALG = os.getenv("JWT_ALG", "HS256")
+
+
+def get_current_cliente_id(token: str = Security(oauth2_scheme)) -> int:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        sub = payload.get("sub")
+        if sub is None:
+            raise ValueError("sub faltante")
+        return int(sub)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
 
 @app.on_event("startup")
 def on_startup() -> None:
-    """Crea las tablas si no existen al iniciar la app."""
     Base.metadata.create_all(bind=engine)
+
+
+app.include_router(auth_router)
 
 
 @app.get("/")
 def root() -> dict:
-    """Ping simple de la API."""
     return {"ok": True, "app": "LookMyStyle"}
 
 
 @app.get("/health")
 def health() -> dict:
-    """Indicador de salud."""
     return {"status": "healthy"}
 
 
@@ -56,7 +76,6 @@ def listar_productos(
     max_price: Optional[float] = Query(None, ge=0, description="Precio máximo"),
     db: Session = Depends(get_db),
 ) -> List[Producto]:
-    """Lista productos con filtros opcionales por categoría y rango de precio."""
     q = db.query(ProductoORM)
     if categoria is not None:
         q = q.filter(func.lower(ProductoORM.categoria) == func.lower(categoria.strip()))
@@ -72,7 +91,6 @@ def obtener_producto(
     producto_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
 ) -> Producto:
-    """Obtiene un producto por su identificador."""
     prod = db.get(ProductoORM, producto_id)
     if not prod:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -85,8 +103,11 @@ def obtener_producto(
     status_code=status.HTTP_201_CREATED,
     tags=["Productos"],
 )
-def crear_producto(producto_in: ProductoIn, db: Session = Depends(get_db)) -> Producto:
-    """Crea un nuevo producto."""
+def crear_producto(
+    producto_in: ProductoIn,
+    db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
+) -> Producto:
     prod = ProductoORM(**producto_in.model_dump())
     db.add(prod)
     db.commit()
@@ -99,8 +120,8 @@ def actualizar_producto(
     producto_id: int = Path(..., gt=0, description="ID (>0)"),
     producto_in: ProductoIn = ...,
     db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
 ) -> Producto:
-    """Actualiza completamente un producto existente."""
     prod = db.get(ProductoORM, producto_id)
     if not prod:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -114,16 +135,12 @@ def actualizar_producto(
     return prod
 
 
-@app.delete(
-    "/productos/{producto_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["Productos"],
-)
+@app.delete("/productos/{producto_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Productos"])
 def eliminar_producto(
     producto_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
 ) -> None:
-    """Elimina un producto por identificador."""
     prod = db.get(ProductoORM, producto_id)
     if not prod:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -138,7 +155,6 @@ def listar_clientes(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> List[Cliente]:
-    """Lista clientes con búsqueda y paginación."""
     query = db.query(ClienteORM)
     if q:
         term = f"%{q.strip()}%"
@@ -153,7 +169,6 @@ def obtener_cliente(
     cliente_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
 ) -> Cliente:
-    """Obtiene un cliente por identificador."""
     cli = db.get(ClienteORM, cliente_id)
     if not cli:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -166,8 +181,11 @@ def obtener_cliente(
     status_code=status.HTTP_201_CREATED,
     tags=["Clientes"],
 )
-def crear_cliente(cliente_in: ClienteIn, db: Session = Depends(get_db)) -> Cliente:
-    """Crea un nuevo cliente, validando unicidad de email."""
+def crear_cliente(
+    cliente_in: ClienteIn,
+    db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
+) -> Cliente:
     if db.query(ClienteORM).filter(ClienteORM.email == cliente_in.email).first():
         raise HTTPException(status_code=409, detail="Email ya registrado")
     cli = ClienteORM(**cliente_in.model_dump())
@@ -186,8 +204,8 @@ def actualizar_cliente(
     cliente_id: int = Path(..., gt=0, description="ID (>0)"),
     cliente_in: ClienteIn = ...,
     db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
 ) -> Cliente:
-    """Actualiza completamente un cliente, validando unicidad de email."""
     cli = db.get(ClienteORM, cliente_id)
     if not cli:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -214,14 +232,12 @@ def actualizar_cliente(
     return cli
 
 
-@app.delete(
-    "/clientes/{cliente_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Clientes"]
-)
+@app.delete("/clientes/{cliente_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Clientes"])
 def eliminar_cliente(
     cliente_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
 ) -> None:
-    """Elimina un cliente por identificador."""
     cli = db.get(ClienteORM, cliente_id)
     if not cli:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -230,7 +246,6 @@ def eliminar_cliente(
 
 
 def _ensure_cliente(db: Session, cliente_id: int) -> ClienteORM:
-    """Garantiza que el cliente exista o lanza 404."""
     cli = db.execute(
         select(ClienteORM).where(ClienteORM.id == cliente_id)
     ).scalar_one_or_none()
@@ -240,7 +255,6 @@ def _ensure_cliente(db: Session, cliente_id: int) -> ClienteORM:
 
 
 def _ensure_carrito_abierto(db: Session, carrito_id: int) -> CarritoORM:
-    """Garantiza que el carrito exista y esté abierto; si no, lanza 404/409."""
     car = db.execute(
         select(CarritoORM).where(CarritoORM.id == carrito_id)
     ).scalar_one_or_none()
@@ -252,7 +266,6 @@ def _ensure_carrito_abierto(db: Session, carrito_id: int) -> CarritoORM:
 
 
 def _get_or_create_open_cart(db: Session, cliente_id: int) -> CarritoORM:
-    """Obtiene el carrito abierto del cliente o crea uno vacío."""
     car = db.execute(
         select(CarritoORM).where(
             CarritoORM.cliente_id == cliente_id, CarritoORM.estado == "abierto"
@@ -269,7 +282,6 @@ def _get_or_create_open_cart(db: Session, cliente_id: int) -> CarritoORM:
 
 
 def _compose_carrito_response(db: Session, carrito: CarritoORM) -> Carrito:
-    """Arma la respuesta del carrito con ítems, subtotales y total."""
     rows = db.execute(
         select(
             CarritoItemORM.producto_id,
@@ -317,8 +329,8 @@ def _compose_carrito_response(db: Session, carrito: CarritoORM) -> Carrito:
 def crear_o_recuperar_carrito(
     cliente_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
 ) -> Carrito:
-    """Crea o recupera el carrito abierto de un cliente."""
     _ensure_cliente(db, cliente_id)
     car = _get_or_create_open_cart(db, cliente_id)
     db.commit()
@@ -330,7 +342,6 @@ def ver_carrito_cliente(
     cliente_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
 ) -> Carrito:
-    """Obtiene el carrito abierto del cliente, creándolo si no existe."""
     _ensure_cliente(db, cliente_id)
     car = db.execute(
         select(CarritoORM).where(
@@ -348,7 +359,6 @@ def ver_carrito(
     carrito_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
 ) -> Carrito:
-    """Obtiene un carrito por identificador."""
     car = db.execute(
         select(CarritoORM).where(CarritoORM.id == carrito_id)
     ).scalar_one_or_none()
@@ -367,8 +377,8 @@ def agregar_item(
     carrito_id: int = Path(..., gt=0, description="ID (>0)"),
     item: CarritoItemIn = Body(...),
     db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
 ) -> Carrito:
-    """Agrega un ítem al carrito o acumula cantidad si ya existe."""
     car = _ensure_carrito_abierto(db, carrito_id)
 
     prod = db.execute(
@@ -425,8 +435,8 @@ def actualizar_item(
     producto_id: int = Path(..., gt=0, description="ID (>0)"),
     item: CarritoItemIn = Body(...),
     db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
 ) -> Carrito:
-    """Actualiza la cantidad de un ítem existente en el carrito."""
     if producto_id != item.producto_id:
         raise HTTPException(
             status_code=400, detail="producto_id de la URL y del body no coinciden"
@@ -468,8 +478,8 @@ def eliminar_item(
     carrito_id: int = Path(..., gt=0, description="ID (>0)"),
     producto_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
 ) -> None:
-    """Elimina un ítem del carrito."""
     car = _ensure_carrito_abierto(db, carrito_id)
 
     res = db.execute(
@@ -490,8 +500,8 @@ def eliminar_item(
 def checkout(
     carrito_id: int = Path(..., gt=0, description="ID (>0)"),
     db: Session = Depends(get_db),
+    current_cliente_id: int = Depends(get_current_cliente_id),
 ) -> CheckoutResult:
-    """Procesa el checkout: valida stock, descuenta y cierra el carrito."""
     car = _ensure_carrito_abierto(db, carrito_id)
 
     items = (
@@ -528,8 +538,8 @@ def checkout(
         total_items += q
         res = db.execute(
             update(ProductoORM)
-            .where(ProductoORM.id == it.producto_id, ProductoORM.stock >= q)
-            .values(stock=ProductoORM.stock - q)
+                .where(ProductoORM.id == it.producto_id, ProductoORM.stock >= q)
+                .values(stock=ProductoORM.stock - q)
         )
         if res.rowcount != 1:
             db.rollback()
@@ -544,10 +554,7 @@ def checkout(
 
     rows = db.execute(
         select(
-            (
-                CarritoItemORM.cantidad
-                * func.coalesce(CarritoItemORM.precio_unitario, ProductoORM.precio)
-            )
+            (CarritoItemORM.cantidad * func.coalesce(CarritoItemORM.precio_unitario, ProductoORM.precio))
         )
         .join(ProductoORM, ProductoORM.id == CarritoItemORM.producto_id)
         .where(CarritoItemORM.carrito_id == car.id)
@@ -561,3 +568,4 @@ def checkout(
         total=total,
         cerrado_en=car.closed_at.isoformat(),
     )
+PY
