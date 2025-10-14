@@ -1,52 +1,38 @@
-# Archivos de entorno y configuraciones locales
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.log
+
+# Virtual env
+.venv/
+env/
+venv/
+
+# IDEs / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Tests / tooling
+.pytest_cache/
+.mypy_cache/
+
+# Env / Secrets
 .env
 .env.*
 !.env.example
 
-# Entornos virtuales
-.venv/
-venv/
-env/
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
 
-# Archivos de dependencias o cachés de Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.pkl
-*.db
-*.sqlite3
-
-# Configuraciones del IDE
-.vscode/
-.idea/
-*.sublime-workspace
-*.sublime-project
-
-# Archivos temporales del sistema
-.DS_Store
-Thumbs.db
-
-# Archivos de build o distribuciones
+# Build / dist
 build/
 dist/
 *.egg-info/
 
-# Logs
-*.log
-
-# Archivos de prueba o cobertura
-.coverage
-htmlcov/
-.pytest_cache/
-
-# Archivos generados automáticamente por herramientas
-.mypy_cache/
-__pypackages__/
-.pyre/
-
-# Configuración de OS
-*.swp
-*.bak
-*.tmp
-*.orig

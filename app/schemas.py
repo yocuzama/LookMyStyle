@@ -1,73 +1,85 @@
-"""Schemas Pydantic de entrada y salida para la API LookMyStyle."""
-
+"""Esquemas Pydantic para entrada/salida de la API."""
+from uuid import UUID
 from typing import Optional, List
-from pydantic import BaseModel, Field, EmailStr
-from pydantic.config import ConfigDict
+from pydantic import BaseModel, EmailStr
 
 
-class ProductoIn(BaseModel):
-    """Entrada para crear o actualizar productos."""
-
-    nombre: str = Field(..., min_length=1, max_length=80)
-    categoria: str = Field(..., min_length=1, max_length=40)
-    precio: float = Field(..., gt=0)
-    stock: int = Field(0, ge=0)
+class _Config:
+    """Config común para modelos ORM."""
+    from_attributes = True
 
 
-class Producto(ProductoIn):
-    """Salida de producto."""
-
-    id: int
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ClienteIn(BaseModel):
-    """Entrada para crear o actualizar clientes."""
-
-    nombre: str = Field(..., min_length=1, max_length=80)
+class ClienteBase(BaseModel):
+    """Datos base de un cliente."""
+    nombre: str
     email: EmailStr
-    telefono: Optional[str] = Field(None, min_length=7, max_length=20)
+    telefono: Optional[str] = None
+    model_config = _Config.__dict__
 
 
-class Cliente(ClienteIn):
-    """Salida de cliente."""
-
-    id: int
-    model_config = ConfigDict(from_attributes=True)
+class ClienteCreate(ClienteBase):
+    """Payload de creación de cliente."""
 
 
-class CarritoItemIn(BaseModel):
-    """Entrada para agregar o actualizar ítems del carrito."""
-
-    producto_id: int
-    cantidad: int = Field(..., gt=0)
+class Cliente(ClienteBase):
+    """Cliente con ID."""
+    id: UUID
 
 
-class CarritoItem(BaseModel):
-    """Salida de renglón del carrito."""
+class ProductoBase(BaseModel):
+    """Datos base de un producto."""
+    nombre: str
+    categoria: Optional[str] = None
+    precio: float
+    stock: Optional[int] = None
+    model_config = _Config.__dict__
 
-    producto_id: int
-    nombre_producto: str
+
+class ProductoCreate(ProductoBase):
+    """Payload de creación de producto."""
+
+
+class Producto(ProductoBase):
+    """Producto con ID."""
+    id: UUID
+
+
+class CarritoItemBase(BaseModel):
+    """Datos base de un item de carrito."""
+    producto_id: UUID
     cantidad: int
-    precio_unitario: float
-    subtotal: float
+    precio_unitario: Optional[float] = None
+    model_config = _Config.__dict__
 
 
-class Carrito(BaseModel):
-    """Salida del carrito con sus ítems y total."""
+class CarritoItemCreate(CarritoItemBase):
+    """Payload de creación de item."""
 
-    id: int
-    cliente_id: int
+
+class CarritoItem(CarritoItemBase):
+    """Item con ID."""
+    id: UUID
+
+
+class CarritoBase(BaseModel):
+    """Datos base de un carrito."""
+    cliente_id: UUID
     estado: str
-    items: List[CarritoItem]
-    total: float
-    model_config = ConfigDict(from_attributes=True)
+    model_config = _Config.__dict__
 
 
-class CheckoutResult(BaseModel):
-    """Salida del proceso de checkout."""
+class CarritoCreate(CarritoBase):
+    """Payload de creación de carrito."""
+    items: Optional[List[CarritoItemCreate]] = None
 
-    carrito_id: int
-    total_items: int
-    total: float
-    cerrado_en: str
+
+class Carrito(CarritoBase):
+    """Carrito con ID e items."""
+    id: UUID
+    items: List[CarritoItem] = []
+
+
+ProductoIn = ProductoCreate
+ClienteIn = ClienteCreate
+CarritoIn = CarritoCreate
+CarritoItemIn = CarritoItemCreate

@@ -1,12 +1,8 @@
-"""Dependencias comunes de FastAPI: inyección de sesión DB por request."""
-
+"""Dependencias comunes."""
 from typing import Generator
-from sqlalchemy.orm import Session
 from .database import SessionLocal
 
-
-def get_db() -> Generator[Session, None, None]:
-    """Abre una sesión de base de datos por request y la cierra al final."""
+def get_db() -> Generator:
     db = SessionLocal()
     try:
         yield db

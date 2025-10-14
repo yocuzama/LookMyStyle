@@ -1,131 +1,102 @@
-"""Modelos ORM actuales de LookMyStyle."""
-
-from typing import Optional, List
+"""Modelos ORM con UUID y columnas de autoría."""
+from __future__ import annotations
+import uuid
 from datetime import datetime
 from sqlalchemy import (
+    Column,
     String,
     Integer,
     Numeric,
     DateTime,
     ForeignKey,
-    UniqueConstraint,
-    CheckConstraint,
+    Index,
+    func,
+    text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER
 from .database import Base
 
 
-class ProductoORM(Base):
-    """Producto del catálogo.
-
-    Atributos:
-        id: Identificador interno.
-        nombre: Nombre del producto.
-        categoria: Categoría del producto.
-        precio: Precio unitario.
-        stock: Unidades disponibles en inventario.
-    """
-
-    __tablename__ = "productos"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    nombre: Mapped[str] = mapped_column(String(80), nullable=False)
-    categoria: Mapped[str] = mapped_column(String(40), nullable=False)
-    precio: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    stock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+class AuditMixin:
+    """Columnas de autoría requeridas por la rúbrica."""
+    creado_por = Column(UNIQUEIDENTIFIER, nullable=True)
+    actualizado_por = Column(UNIQUEIDENTIFIER, nullable=True)
+    fecha_creacion = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("(sysutcdatetime())"),
+    )
+    fecha_actualizacion = Column(
+        DateTime(timezone=True),
+        nullable=True,
+        server_default=text("(sysutcdatetime())"),
+        onupdate=func.sysutcdatetime(),
+    )
 
 
-class ClienteORM(Base):
-    """Cliente de la tienda.
-
-    Atributos:
-        id: Identificador interno.
-        nombre: Nombre completo del cliente.
-        email: Correo electrónico único.
-        telefono: Número de contacto opcional.
-        carritos: Carritos asociados al cliente.
-    """
-
+class ClienteORM(AuditMixin, Base):
+    """Clientes."""
     __tablename__ = "clientes"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    nombre: Mapped[str] = mapped_column(String(80), nullable=False)
-    email: Mapped[str] = mapped_column(
-        String(120), nullable=False, unique=True, index=True
+    id = Column(
+        UNIQUEIDENTIFIER,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("NEWID()"),
     )
-    telefono: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    nombre = Column(String(100), nullable=False)
+    email = Column(String(255), nullable=False, index=True, unique=True)
+    telefono = Column(String(30), nullable=True)
+    carritos = relationship("CarritoORM", back_populates="cliente", cascade="all, delete-orphan")
 
-    carritos: Mapped[List["CarritoORM"]] = relationship(
-        back_populates="cliente", lazy="selectin"
+
+class ProductoORM(AuditMixin, Base):
+    """Productos."""
+    __tablename__ = "productos"
+    id = Column(
+        UNIQUEIDENTIFIER,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("NEWID()"),
     )
+    nombre = Column(String(150), nullable=False, index=True)
+    categoria = Column(String(100), nullable=True, index=True)
+    precio = Column(Numeric(12, 2), nullable=False)
+    stock = Column(Integer, nullable=True)
+    items = relationship("CarritoItemORM", back_populates="producto", cascade="all, delete")
 
 
-class CarritoORM(Base):
-    """Carrito de compras asociado a un cliente.
-
-    Atributos:
-        id: Identificador interno del carrito.
-        cliente_id: Identificador del cliente dueño del carrito.
-        estado: Estado del carrito; 'abierto' o 'cerrado'.
-        created_at: Fecha de creación (UTC).
-        closed_at: Fecha de cierre si aplica (UTC).
-        items: Ítems contenidos en el carrito.
-        cliente: Cliente propietario del carrito.
-    """
-
+class CarritoORM(AuditMixin, Base):
+    """Carritos de compra."""
     __tablename__ = "carritos"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    cliente_id: Mapped[int] = mapped_column(
-        ForeignKey("clientes.id"), nullable=False, index=True
+    id = Column(
+        UNIQUEIDENTIFIER,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("NEWID()"),
     )
-    estado: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="abierto", index=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
-    )
-    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-
-    items: Mapped[List["CarritoItemORM"]] = relationship(
-        back_populates="carrito",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
-    cliente: Mapped["ClienteORM"] = relationship(back_populates="carritos")
+    cliente_id = Column(UNIQUEIDENTIFIER, ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False)
+    estado = Column(String(20), nullable=False, default="abierto")
+    cliente = relationship("ClienteORM", back_populates="carritos")
+    items = relationship("CarritoItemORM", back_populates="carrito", cascade="all, delete-orphan")
 
 
-class CarritoItemORM(Base):
-    """Ítem dentro de un carrito.
-
-    Atributos:
-        id: Identificador interno del ítem.
-        carrito_id: Identificador del carrito al que pertenece.
-        producto_id: Identificador del producto agregado.
-        cantidad: Unidades del producto en el carrito.
-        precio_unitario: Precio tomado como snapshot al agregar, si existe.
-        carrito: Carrito asociado.
-        producto: Producto asociado.
-    """
-
+class CarritoItemORM(AuditMixin, Base):
+    """Ítems del carrito."""
     __tablename__ = "carrito_items"
+    id = Column(
+        UNIQUEIDENTIFIER,
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("NEWID()"),
+    )
+    carrito_id = Column(UNIQUEIDENTIFIER, ForeignKey("carritos.id", ondelete="CASCADE"), nullable=False)
+    producto_id = Column(UNIQUEIDENTIFIER, ForeignKey("productos.id"), nullable=False)
+    cantidad = Column(Integer, nullable=False, default=1)
+    precio_unitario = Column(Numeric(12, 2), nullable=True)
+    carrito = relationship("CarritoORM", back_populates="items")
+    producto = relationship("ProductoORM", back_populates="items")
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    carrito_id: Mapped[int] = mapped_column(
-        ForeignKey("carritos.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    producto_id: Mapped[int] = mapped_column(
-        ForeignKey("productos.id"), nullable=False, index=True
-    )
-    cantidad: Mapped[int] = mapped_column(Integer, nullable=False)
-    precio_unitario: Mapped[Optional[float]] = mapped_column(
-        Numeric(10, 2), nullable=True
-    )
 
-    carrito: Mapped["CarritoORM"] = relationship(back_populates="items")
-    producto: Mapped["ProductoORM"] = relationship()
-
-    __table_args__ = (
-        UniqueConstraint("carrito_id", "producto_id", name="uq_carrito_producto"),
-        CheckConstraint("cantidad > 0", name="ck_cantidad_pos"),
-    )
+Index("ix_productos_nombre", ProductoORM.nombre)
+Index("ix_productos_categoria", ProductoORM.categoria)

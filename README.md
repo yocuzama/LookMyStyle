@@ -1,13 +1,20 @@
 # LookMyStyle API
 
-API REST con FastAPI y SQLAlchemy. Base de datos: SQL Server (conexión vía pyodbc). Configuración por `.env`.
+API en FastAPI + SQL Server (pyodbc) con autenticación JWT, CORS, Alembic y SQLAlchemy.  
+IDs en UUID y columnas de autoría en todas las entidades.
 
 ## Requisitos
-- Python 3.10+
-- SQL Server (local o remoto)
-- Microsoft ODBC Driver 17/18 for SQL Server
-- Dependencias de Python (ver `requirements.txt`)
+- Python 3.11+ recomendado
+- SQL Server (LocalDB o instancia)
+- ODBC Driver 17 o 18 para SQL Server
 
-Instalación de dependencias:
+## Instalación
 ```bash
-py -m pip install -r requirements.txt
+git clone <URL-DEL-REPO>
+cd LookMyStyle
+python -m venv .venv
+# PowerShell:
+.\.venv\Scripts\Activate.ps1
+# Git Bash:
+source .venv/Scripts/activate
+pip install -r requirements.txt
